@@ -31,7 +31,7 @@ impl Chip8CPU {
         let current_instruction_binary = ((first_byte as u16) << 8) | second_byte as u16;
 
         let memory_address = current_instruction_binary & 0x0FFF;
-        let hexadecimal_byte = (current_instruction_binary >> 8) & 0xFF;
+        let hexadecimal_byte = second_byte;
         let hexadecimal_nibble = current_instruction_binary & 0xF;
 
         let leading_nimble = (current_instruction_binary >> 12) & 0xF;
@@ -71,12 +71,8 @@ impl Chip8CPU {
             }
             0x6 => self.registers[register_x as usize] = hexadecimal_byte as u8,
             0x7 => {
-                let mut value_to_set: u16 =
+                let value_to_set: u16 =
                     (self.registers[register_x as usize] as u16) + hexadecimal_byte;
-                if value_to_set > 255 {
-                    value_to_set = value_to_set - 255;
-                }
-                println!("{} {}", self.registers[register_x as usize], value_to_set);
                 self.registers[register_x as usize] = value_to_set as u8
             }
             0x8 => match hexadecimal_nibble {
@@ -101,8 +97,10 @@ impl Chip8CPU {
                     {
                         had_carry = 1;
                     };
-                    self.registers[register_x as usize] =
-                        self.registers[register_x as usize] + self.registers[register_y as usize];
+                    let value_to_set: u16 =
+                    self.registers[register_x as usize] as u16 + self.registers[register_y as usize] as u16;
+
+                    self.registers[register_x as usize] = value_to_set as u8;
                     self.registers[0xF] = had_carry;
                 }
                 0x5 => {
@@ -110,8 +108,11 @@ impl Chip8CPU {
                     if self.registers[register_x as usize] > self.registers[register_y as usize] {
                         had_borrow = 1;
                     };
+                    let value_to_set: i16 =
+                    self.registers[register_x as usize] as i16 -self.registers[register_y as usize] as i16;
+
                     self.registers[register_x as usize] =
-                        self.registers[register_x as usize] - self.registers[register_y as usize];
+                    value_to_set as u8;
 
                     self.registers[0xF] = had_borrow;
                 }
@@ -125,8 +126,11 @@ impl Chip8CPU {
                     if self.registers[register_y as usize] > self.registers[register_x as usize] {
                         had_borrow = 1;
                     };
-                    self.registers[register_x as usize] =
-                        self.registers[register_y as usize] - self.registers[register_x as usize];
+
+                    let value_to_set: i16 =
+                    self.registers[register_y as usize] as i16 - self.registers[register_x as usize] as i16;
+
+                    self.registers[register_x as usize] = value_to_set as u8;
 
                     self.registers[0xF] = had_borrow;
                 }
@@ -138,20 +142,20 @@ impl Chip8CPU {
                 _ => {}
             },
             0x9 => {
-                if self.registers[register_x as usize] != self.registers[register_y as usize] {
-                    self.pc = self.pc + 0x2;
-                }
+                // if self.registers[register_x as usize] != self.registers[register_y as usize] {
+                //     self.pc = self.pc + 0x2;
+                // }
             }
             0xA => self.i = memory_address,
             0xB => self.pc = memory_address + self.registers[0] as u16,
             0xC => {} // RNG
             0xD => {
-                let mut x = self.registers[register_x as usize];
-                if (x > 0x3F) {
+                let mut x = self.registers[register_x as usize] as u32;
+                if x > 0x3F {
                     x = x % 0x40;
                 }
-                let mut y = self.registers[register_y as usize];
-                if (y > 0x1F) {
+                let mut y = self.registers[register_y as usize] as u32;
+                if y > 0x1F {
                     y = y % 0x20;
                 }
 
@@ -162,26 +166,28 @@ impl Chip8CPU {
                 let total_bytes =
                     &self.memory[self.i as usize..(self.i + number_of_bytes) as usize].to_vec();
 
-                for (i, &value) in total_bytes.iter().enumerate() {
-                    let mut pixel_pointer =
-                        DISPLAY_DATA_ADDRESS as u8 + x + y * WIDTH as u8 + WIDTH as u8 * i as u8;
+                for (index, &value) in total_bytes.iter().enumerate() {
+                    let mut pixel_pointer: u32 = DISPLAY_DATA_ADDRESS as u32
+                        + x
+                        + y * WIDTH as u32
+                        + WIDTH as u32 * index as u32;
+                    // println!("{} {} {} {}", pixel_pointer, x ,y, value);
                     let binary_data = Self::convert_decimal_byte_to_binary(value);
 
                     for element in binary_data {
-                        let previous_pixel_value = self.memory[pixel_pointer as usize];
-                        if element as u16 != previous_pixel_value {
+                        let previous_pixel_value = self.memory[pixel_pointer as usize] as u32;
+                        if element as u32 != previous_pixel_value {
                             self.memory[pixel_pointer as usize] = 1;
                         } else {
                             self.memory[pixel_pointer as usize] = 0;
                         }
-                        if previous_pixel_value != self.memory[pixel_pointer as usize]
+                        if previous_pixel_value != self.memory[pixel_pointer as usize].into()
                             && self.memory[pixel_pointer as usize] == 0
                         {
                             pixel_has_changed_to_unset = true;
                         }
                         pixel_pointer += 1;
                     }
-                    pixel_pointer += WIDTH as u8;
                 }
 
                 if pixel_has_changed_to_unset {
@@ -189,6 +195,8 @@ impl Chip8CPU {
                 } else {
                     self.registers[0xF] = 0;
                 }
+
+                // println!("{:?}", self)
             }
             0xE => {} // Key Registers
             0xF => match hexadecimal_byte {
@@ -198,20 +206,26 @@ impl Chip8CPU {
                 0x18 => {} // Sound
                 0x1E => self.i = self.i + self.registers[register_x as usize] as u16,
                 0x29 => {} // Character Data
-                0x33 => {} // Binary Coded Decimal
+                0x33 => {
+                    let mut decimal_number = self.registers[register_x as usize] as u16;
+
+                    for index in (0..(2 + 1)).rev() {
+                        self.memory[(self.i + index) as usize] = decimal_number % 10;
+                        println!("{}", self.memory[(self.i + index) as usize]);
+                        decimal_number /= 10;
+                    }
+                } // Binary Coded Decimal
                 0x55 => {
-                    for index in 0..register_x {
+                    for index in 0..(register_x + 1) {
                         self.memory[(self.i + index) as usize] =
                             self.registers[index as usize] as u16;
                     }
-                    self.i = self.i + register_x + 1;
                 }
                 0x65 => {
-                    for index in 0..register_x {
+                    for index in 0..(register_x + 1) {
                         self.registers[index as usize] =
                             self.memory[(self.i + index) as usize] as u8;
                     }
-                    self.i = self.i + register_x + 1;
                 }
                 _ => {}
             },
@@ -224,7 +238,8 @@ impl Chip8CPU {
     }
 
     fn add_to_routine_stack(&mut self, memory_address: u16) {
-        for index in 0..11 {
+        self.memory[0] = self.pc;
+        for index in 1..11 {
             if self.memory[index] as u16 == 0x0 {
                 self.memory[index] = memory_address as u16;
                 self.pc = memory_address;
@@ -235,9 +250,9 @@ impl Chip8CPU {
 
     fn remove_from_routine_stack(&mut self) {
         for index in 0..11 {
-            if self.memory[index] as u16 == 0x0 {
-                self.memory[index - 1] = 0x0;
-                self.pc = self.memory[index - 2];
+            if self.memory[index + 2] as u16 == 0x0 {
+                self.memory[index + 1] = 0x0;
+                self.pc = self.memory[index];
                 break;
             }
         }

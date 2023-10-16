@@ -1,16 +1,16 @@
-use minifb::{Key, Window, WindowOptions};
+use minifb::{Key, Window, WindowOptions, Scale};
 use std::fs;
 
 mod chip8;
 
-const WIDTH: usize = 64 * 4;
-const HEIGHT: usize = 32 * 4;
-const DISPLAY_DATA_ADDRESS: usize = 0xE90;
+const WIDTH: usize = 64;
+const HEIGHT: usize = 32;
+const DISPLAY_DATA_ADDRESS: usize = 0x800;
 
 fn main() {
     let mut chip8 = chip8::Chip8CPU::initialize();
 
-    let current_rom: Vec<u8> = fs::read("./rom/2-ibm-logo.ch8").unwrap();
+    let current_rom: Vec<u8> = fs::read("./rom/3-corax+.ch8").unwrap();
 
     chip8.load_rom(current_rom);
 
@@ -19,19 +19,28 @@ fn main() {
     let mut buffer: Vec<u32> = vec![0; WIDTH * HEIGHT];
 
     let mut window =
-        Window::new("Rust-8", WIDTH, HEIGHT, WindowOptions::default()).unwrap_or_else(|e| {
+        Window::new("Rust-8", WIDTH, HEIGHT, {
+            WindowOptions { 
+                resize: true, scale: Scale::X4, scale_mode: minifb::ScaleMode::Stretch,
+                ..WindowOptions::default()
+            }
+        }).unwrap_or_else(|e| {
             panic!("{}", e);
         });
 
     // Limit to max ~60 fps update rate
-    window.limit_update_rate(Some(std::time::Duration::from_micros(16600)));
+    window.limit_update_rate(Some(std::time::Duration::from_micros(16600  / 4)));
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        for i in buffer.iter_mut() {
-            *i = get_pixel_state(chip8.get_display_data()[*i as usize])
-        }
-
         chip8.run();
+
+        let display_data = chip8.get_display_data();
+
+        for (index, &value) in display_data.iter().enumerate() {
+            buffer[index] = get_pixel_state(value);
+        }
+        
+
 
         window.update_with_buffer(&buffer, WIDTH, HEIGHT).unwrap();
     }
