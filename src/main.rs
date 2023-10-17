@@ -5,12 +5,11 @@ mod chip8;
 
 const WIDTH: usize = 64;
 const HEIGHT: usize = 32;
-const DISPLAY_DATA_ADDRESS: usize = 0x800;
 
 fn main() {
     let mut chip8 = chip8::Chip8CPU::initialize();
 
-    let current_rom: Vec<u8> = fs::read("./rom/3-corax+.ch8").unwrap();
+    let current_rom: Vec<u8> = fs::read("./rom/4-flags.ch8").unwrap();
 
     chip8.load_rom(current_rom);
 
