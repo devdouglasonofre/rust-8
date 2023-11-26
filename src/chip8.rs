@@ -8,7 +8,10 @@ pub struct Chip8CPU {
     call_stack: Vec<u16>,
     i: u16,
     pc: u16,
+    delay_timer: u8,
+    sound_timer: u8,
 }
+
 impl Chip8CPU {
     pub fn initialize() -> Chip8CPU {
         Chip8CPU {
@@ -18,6 +21,8 @@ impl Chip8CPU {
             call_stack: vec![],
             i: 0,
             pc: 0x200,
+            delay_timer: 0,
+            sound_timer: 0,
         }
     }
 
@@ -27,6 +32,21 @@ impl Chip8CPU {
         }
         println!("{:?}", self.memory);
     }
+
+    pub fn decrease_timers_value(&mut self) {
+        if self.delay_timer > 0 {
+            self.delay_timer = self.delay_timer - 1;
+        }
+
+        if self.sound_timer > 0 {
+            self.sound_timer = self.sound_timer - 1;
+        }
+    }
+
+    pub fn get_sound_timer_value(&mut self) -> u8 {
+        return self.sound_timer;
+    }
+
 
     pub fn run(&mut self) {
         let first_byte = self.memory[self.pc as usize];
@@ -74,14 +94,16 @@ impl Chip8CPU {
             0x9 => self.skip_if_registers_values_are_different(register_x, register_y),
             0xA => self.set_i_to_address(nnn),
             0xB => self.set_pc_to_register_value_plus_address(nnn),
-            0xC => {} // RNG
+            0xC => self.generate_and_register_random_number(register_x, nn), // RNG
             0xD => self.register_to_vram(register_x, register_y, n),
-            0xE => {} // Key Registers
+            0xE => {
+                self.pc += 0x2;
+            } // Key Registers
             0xF => match nn {
-                0x07 => {} // Delay
+                0x07 => self.store_current_delay_value_to_x(register_x),
                 0x0A => {} // Key Press
-                0x15 => {} // Delay
-                0x18 => {} // Sound
+                0x15 => self.set_delay_timer_value(register_x), // Delay
+                0x18 => self.set_sound_timer_value(register_x), // Sound
                 0x1E => self.set_i_to_sum_of_itself_with_register_value(register_x),
                 0x29 => {} // Character Data
                 0x33 => self.binary_coded_decimal(register_x),
@@ -91,6 +113,23 @@ impl Chip8CPU {
             },
             _ => {}
         }
+    }
+
+    fn set_sound_timer_value(&mut self, register_x: u16) {
+        self.sound_timer = self.registers[register_x as usize];
+    }
+
+    fn set_delay_timer_value(&mut self, register_x: u16) {
+        self.delay_timer = self.registers[register_x as usize];
+    }
+
+    fn store_current_delay_value_to_x(&mut self, register_x: u16) {
+        self.registers[register_x as usize] = self.delay_timer;
+    }
+
+    fn generate_and_register_random_number(&mut self, register_x: u16, nn: u16) {
+        let random_number = rand::random::<u8>();
+        self.registers[register_x as usize] = random_number & (nn as u8);
     }
 
     fn minus_register_and_check_if_has_borrow(&mut self, register_y: u16, register_x: u16) {
@@ -154,9 +193,9 @@ impl Chip8CPU {
     }
 
     fn skip_if_registers_values_are_different(&mut self, register_x: u16, register_y: u16) {
-        // if self.registers[register_x as usize] != self.registers[register_y as usize] {
-        //     self.pc = self.pc + 0x2;
-        // }
+        if self.registers[register_x as usize] != self.registers[register_y as usize] {
+            self.pc = self.pc + 0x2;
+        }
     }
 
     fn set_i_to_address(&mut self, nnn: u16) {
