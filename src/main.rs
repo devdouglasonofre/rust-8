@@ -13,11 +13,9 @@ const DEFAULT_CLOCK_SPEED: u8 = 11;
 fn main() {
     let mut chip8 = chip8::Chip8CPU::initialize();
 
-    let current_rom: Vec<u8> = fs::read("./rom/7-beep.ch8").unwrap();
+    let current_rom: Vec<u8> = fs::read("./rom/6-keypad.ch8").unwrap();
 
     chip8.load_rom(current_rom);
-
-    chip8.run();
 
     let mut buffer: Vec<u32> = vec![0; WIDTH * HEIGHT];
 
@@ -41,11 +39,15 @@ fn main() {
     window.limit_update_rate(Some(refresh_rate));
     
     while window.is_open() && !window.is_key_down(Key::Escape) {
+        
+        chip8.store_current_pressed_keys(&window);
         let mut bus_counter = DEFAULT_CLOCK_SPEED;
         while bus_counter > 0 {
             chip8.run();
-            bus_counter = bus_counter - 1;
+            bus_counter -= 1;
         }
+        
+        chip8.store_current_released_keys(&window);
 
         chip8.decrease_timers_value();
         if chip8.get_sound_timer_value() > 0 {

@@ -1,3 +1,5 @@
+use minifb::{Window, KeyRepeat, Key};
+
 use crate::{HEIGHT, WIDTH};
 
 #[derive(Debug)]
@@ -5,6 +7,7 @@ pub struct Chip8CPU {
     memory: Vec<u16>,
     vram: Vec<u16>,
     registers: Vec<u8>,
+    keys: Vec<u8>,
     call_stack: Vec<u16>,
     i: u16,
     pc: u16,
@@ -18,6 +21,7 @@ impl Chip8CPU {
             memory: vec![0; 4096],
             vram: vec![0; 2048],
             registers: vec![0; 16],
+            keys: vec![0; 16],
             call_stack: vec![],
             i: 0,
             pc: 0x200,
@@ -35,16 +39,30 @@ impl Chip8CPU {
 
     pub fn decrease_timers_value(&mut self) {
         if self.delay_timer > 0 {
-            self.delay_timer = self.delay_timer - 1;
+            self.delay_timer -= 1;
         }
 
         if self.sound_timer > 0 {
-            self.sound_timer = self.sound_timer - 1;
+            self.sound_timer -= 1;
         }
     }
 
     pub fn get_sound_timer_value(&mut self) -> u8 {
         return self.sound_timer;
+    }
+
+    pub fn store_current_pressed_keys(&mut self, window: &Window) {
+        window.get_keys_pressed(KeyRepeat::Yes).iter().for_each(|key| {
+            let value = self.map_key_to_hex_value(key);
+            self.keys[value as usize] = 0x1;
+        });
+    }
+
+    pub fn store_current_released_keys(&mut self, window: &Window) {
+        window.get_keys_released().iter().for_each(|key|{
+            let value = self.map_key_to_hex_value(key);
+            self.keys[value as usize] = 0x0
+        });
     }
 
 
@@ -62,9 +80,7 @@ impl Chip8CPU {
         let register_x = (current_instruction_binary >> 8) & 0xF;
         let register_y = (current_instruction_binary >> 4) & 0xF;
 
-        println!("{}", format!("{:04X}", current_instruction_binary));
-
-        self.pc += 0x2;
+        println!("{}", format!("{:04X}", current_instruction_binary)); 
 
         match leading_nibble {
             0x0 => match nnn {
@@ -96,12 +112,48 @@ impl Chip8CPU {
             0xB => self.set_pc_to_register_value_plus_address(nnn),
             0xC => self.generate_and_register_random_number(register_x, nn), // RNG
             0xD => self.register_to_vram(register_x, register_y, n),
-            0xE => {
-                self.pc += 0x2;
+            0xE => match nn {
+                0x9E => {
+                    if self.keys[self.registers[register_x as usize] as usize] == 0x1 {
+                        self.pc += 0x2;
+                    }
+                },
+                0xA1 => {
+                    if self.keys[self.registers[register_x as usize] as usize] == 0x0 {
+                        self.pc += 0x2;
+                    }
+                },
+                _ => {},
             } // Key Registers
             0xF => match nn {
                 0x07 => self.store_current_delay_value_to_x(register_x),
-                0x0A => {} // Key Press
+                0x0A => {
+                    // window.get_keys_released().iter().for_each(|key|
+                    //     match key {
+                    //         Key::Key1 => self.store_currently_released_key(register_x, 0x1),
+                    //         Key::Key2 => self.store_currently_released_key(register_x, 0x2),
+                    //         Key::Key3 => self.store_currently_released_key(register_x, 0x3),
+                    //         Key::Key4 => self.store_currently_released_key(register_x, 0xC),
+                    //         Key::Q => self.store_currently_released_key(register_x, 0x4),
+                    //         Key::W => self.store_currently_released_key(register_x, 0x5),
+                    //         Key::E => self.store_currently_released_key(register_x, 0x6),
+                    //         Key::R => self.store_currently_released_key(register_x, 0xD),
+                    //         Key::A => self.store_currently_released_key(register_x, 0x7),
+                    //         Key::S => self.store_currently_released_key(register_x, 0x8),
+                    //         Key::D => self.store_currently_released_key(register_x, 0x9),
+                    //         Key::F => self.store_currently_released_key(register_x, 0xE),
+                    //         Key::Z => self.store_currently_released_key(register_x, 0xA),
+                    //         Key::X => self.store_currently_released_key(register_x, 0x0),
+                    //         Key::C => self.store_currently_released_key(register_x, 0xB),
+                    //         Key::V => self.store_currently_released_key(register_x, 0xF),
+                    //         _ => {}
+                    //     }
+                    // );
+                    // if self.registers[register_x as usize] ==  0xFF {
+                        
+                    // } 
+                
+                } // Key Press
                 0x15 => self.set_delay_timer_value(register_x), // Delay
                 0x18 => self.set_sound_timer_value(register_x), // Sound
                 0x1E => self.set_i_to_sum_of_itself_with_register_value(register_x),
@@ -113,6 +165,33 @@ impl Chip8CPU {
             },
             _ => {}
         }
+        self.pc += 0x2
+    }
+
+    fn map_key_to_hex_value(&mut self, key: &Key) -> u8 {
+        match key {
+            Key::Key1 => 0x1,
+            Key::Key2 => 0x2,
+            Key::Key3 => 0x3,
+            Key::Key4 => 0xC,
+            Key::Q => 0x4,
+            Key::W => 0x5,
+            Key::E => 0x6,
+            Key::R => 0xD,
+            Key::A => 0x7,
+            Key::S => 0x8,
+            Key::D => 0x9,
+            Key::F => 0xE,
+            Key::Z => 0xA,
+            Key::X => 0x0,
+            Key::C => 0xB,
+            Key::V => 0xF,
+            _ => 0xFF
+        }
+    }
+
+    fn store_currently_released_key(&mut self, register_x: u16, currently_pressed_key: u8) {
+        self.registers[register_x as usize] = currently_pressed_key;
     }
 
     fn set_sound_timer_value(&mut self, register_x: u16) {
@@ -194,7 +273,7 @@ impl Chip8CPU {
 
     fn skip_if_registers_values_are_different(&mut self, register_x: u16, register_y: u16) {
         if self.registers[register_x as usize] != self.registers[register_y as usize] {
-            self.pc = self.pc + 0x2;
+            self.pc = self.pc;
         }
     }
 
@@ -300,12 +379,12 @@ impl Chip8CPU {
 
     fn add_address_to_call_stack(&mut self, nnn: u16) {
         self.call_stack.push(self.pc);
-        self.pc = nnn;
+        self.pc = nnn - 0x2;
     }
 
     fn set_pointer(&mut self, nnn: u16) {
         if nnn > 0x200 {
-            self.pc = nnn
+            self.pc = nnn - 0x2;
         }
     }
 
