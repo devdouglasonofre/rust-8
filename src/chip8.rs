@@ -90,6 +90,8 @@ impl Chip8CPU {
             return;
         }
 
+        self.pc += 0x2;
+
         let mut should_halt = false;
 
         match leading_nibble {
@@ -141,8 +143,9 @@ impl Chip8CPU {
             },
             _ => {}
         }
-        if !should_halt {
-            self.pc += 0x2
+
+        if should_halt {
+            self.pc -= 0x2;
         }
     }
 
@@ -277,7 +280,7 @@ impl Chip8CPU {
 
     fn skip_if_registers_values_are_different(&mut self, register_x: u16, register_y: u16) {
         if self.registers[register_x as usize] != self.registers[register_y as usize] {
-            self.pc = self.pc;
+            self.pc = self.pc + 0x2;
         }
     }
 
@@ -384,12 +387,12 @@ impl Chip8CPU {
 
     fn add_address_to_call_stack(&mut self, nnn: u16) {
         self.call_stack.push(self.pc);
-        self.pc = nnn - 0x2;
+        self.pc = nnn;
     }
 
     fn set_pointer(&mut self, nnn: u16) {
         if nnn > 0x200 {
-            self.pc = nnn - 0x2;
+            self.pc = nnn;
         }
     }
 
