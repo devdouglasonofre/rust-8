@@ -30,6 +30,7 @@ fn main() {
 
     let mut menu = Menu::new("File").unwrap();
     menu.add_item("Load Rom", 0).build();
+    menu.destroy_menu();
     window.add_menu(&menu);
 
     let refresh_rate = std::time::Duration::from_secs_f32(1.0 / 60.0);
@@ -40,6 +41,7 @@ fn main() {
     // Limit to max ~60 fps update rate
     window.limit_update_rate(Some(refresh_rate));
 
+    let mut last_loaded_rom: Option<Vec<u8>> = None;
     while window.is_open() && !window.is_key_down(Key::Escape) {
         match window.is_menu_pressed() {
             Some(0) => {
@@ -53,18 +55,26 @@ fn main() {
                     Some(rom_path) => {
                         let current_rom: Vec<u8> = fs::read(rom_path).unwrap();
                         chip8 = chip8::Chip8CPU::initialize();
+                        last_loaded_rom = Some(current_rom.clone());
+                    
+                        menu.add_item("Reset", 1).build();
                         chip8.load_rom(current_rom);
                     }
                     None => {}
                 }
+            }
+            Some(1) => {
+                chip8 = chip8::Chip8CPU::initialize();
+                chip8.load_rom(last_loaded_rom.clone().unwrap());
+                
             }
             Some(_) => {}
             None => {}
         }
 
         let mut bus_counter = DEFAULT_CLOCK_SPEED;
+        chip8.register_current_pressed_keys(&window);
         while bus_counter > 0 {
-            chip8.register_current_pressed_keys(&window);
             chip8.run();
             bus_counter -= 1;
         }
