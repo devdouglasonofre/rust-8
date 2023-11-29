@@ -7,7 +7,8 @@ pub struct Chip8CPU {
     memory: Vec<u16>,
     vram: Vec<u16>,
     registers: Vec<u8>,
-    keys: Vec<u8>,
+    curr_keys: Vec<u8>,
+    old_keys: Vec<u8>,
     call_stack: Vec<u16>,
     i: u16,
     pc: u16,
@@ -21,7 +22,8 @@ impl Chip8CPU {
             memory: vec![0; 4096],
             vram: vec![0; 2048],
             registers: vec![0; 16],
-            keys: vec![0; 16],
+            curr_keys: vec![0; 16],
+            old_keys: vec![0; 16],
             call_stack: vec![],
             i: 0,
             pc: 0x200,
@@ -51,22 +53,20 @@ impl Chip8CPU {
         return self.sound_timer;
     }
 
-    pub fn store_current_pressed_keys(&mut self, window: &Window) {
-        window.get_keys_pressed(KeyRepeat::Yes).iter().for_each(|key| {
-            let value = self.map_key_to_hex_value(key);
-            if value != 0xFF {
-                self.keys[value as usize] = 0x1;
+    pub fn register_current_pressed_keys(&mut self, window: &Window) {
+        for (index, key) in self.curr_keys.iter_mut().enumerate() {
+            let current_key = Chip8CPU::map_hex_value_to_key(index as u8);
+            if window.is_key_down(current_key) {
+                *key = 1.into();
             }
-        });
+            if window.is_key_released(current_key) {
+                *key = 0.into();
+            }
+        }
     }
 
-    pub fn store_current_released_keys(&mut self, window: &Window) {
-        window.get_keys_released().iter().for_each(|key|{
-            let value = self.map_key_to_hex_value(key);
-            if value != 0xFF {
-                self.keys[value as usize] = 0x0
-            }
-        });
+    pub fn clone_current_to_old_keys(&mut self, window: &Window) {
+       self.old_keys = self.curr_keys.clone();
     }
 
 
@@ -89,6 +89,8 @@ impl Chip8CPU {
         if current_instruction_binary == 0x0 {
             return;
         }
+
+        let mut should_halt = false;
 
         match leading_nibble {
             0x0 => match nnn {
@@ -121,47 +123,13 @@ impl Chip8CPU {
             0xC => self.generate_and_register_random_number(register_x, nn), // RNG
             0xD => self.register_to_vram(register_x, register_y, n),
             0xE => match nn {
-                0x9E => {
-                    if self.keys[self.registers[register_x as usize] as usize] == 0x1 {
-                        self.pc += 0x2;
-                    }
-                },
-                0xA1 => {
-                    if self.keys[self.registers[register_x as usize] as usize] == 0x0 {
-                        self.pc += 0x2;
-                    }
-                },
+                0x9E => self.skip_if_key_vx_is_pressed(register_x),
+                0xA1 => self.skip_if_key_vx_is_released(register_x),
                 _ => {},
             } // Key Registers
             0xF => match nn {
                 0x07 => self.store_current_delay_value_to_x(register_x),
-                0x0A => {
-                    // window.get_keys_released().iter().for_each(|key|
-                    //     match key {
-                    //         Key::Key1 => self.store_currently_released_key(register_x, 0x1),
-                    //         Key::Key2 => self.store_currently_released_key(register_x, 0x2),
-                    //         Key::Key3 => self.store_currently_released_key(register_x, 0x3),
-                    //         Key::Key4 => self.store_currently_released_key(register_x, 0xC),
-                    //         Key::Q => self.store_currently_released_key(register_x, 0x4),
-                    //         Key::W => self.store_currently_released_key(register_x, 0x5),
-                    //         Key::E => self.store_currently_released_key(register_x, 0x6),
-                    //         Key::R => self.store_currently_released_key(register_x, 0xD),
-                    //         Key::A => self.store_currently_released_key(register_x, 0x7),
-                    //         Key::S => self.store_currently_released_key(register_x, 0x8),
-                    //         Key::D => self.store_currently_released_key(register_x, 0x9),
-                    //         Key::F => self.store_currently_released_key(register_x, 0xE),
-                    //         Key::Z => self.store_currently_released_key(register_x, 0xA),
-                    //         Key::X => self.store_currently_released_key(register_x, 0x0),
-                    //         Key::C => self.store_currently_released_key(register_x, 0xB),
-                    //         Key::V => self.store_currently_released_key(register_x, 0xF),
-                    //         _ => {}
-                    //     }
-                    // );
-                    // if self.registers[register_x as usize] ==  0xFF {
-                        
-                    // } 
-                
-                } // Key Press
+                0x0A => self.wait_until_key_press(register_x, &mut should_halt), // Key Press
                 0x15 => self.set_delay_timer_value(register_x), // Delay
                 0x18 => self.set_sound_timer_value(register_x), // Sound
                 0x1E => self.set_i_to_sum_of_itself_with_register_value(register_x),
@@ -173,33 +141,61 @@ impl Chip8CPU {
             },
             _ => {}
         }
-        self.pc += 0x2
-    }
-
-    fn map_key_to_hex_value(&mut self, key: &Key) -> u8 {
-        match key {
-            Key::Key1 => 0x1,
-            Key::Key2 => 0x2,
-            Key::Key3 => 0x3,
-            Key::Key4 => 0xC,
-            Key::Q => 0x4,
-            Key::W => 0x5,
-            Key::E => 0x6,
-            Key::R => 0xD,
-            Key::A => 0x7,
-            Key::S => 0x8,
-            Key::D => 0x9,
-            Key::F => 0xE,
-            Key::Z => 0xA,
-            Key::X => 0x0,
-            Key::C => 0xB,
-            Key::V => 0xF,
-            _ => 0xFF
+        if !should_halt {
+            self.pc += 0x2
         }
     }
 
-    fn store_currently_released_key(&mut self, register_x: u16, currently_pressed_key: u8) {
-        self.registers[register_x as usize] = currently_pressed_key;
+    fn wait_until_key_press(&mut self, register_x: u16, should_halt: &mut bool) {
+        let mut key_is_pressed = false;
+        let mut pressed_key = 0;
+        for (index, value) in self.curr_keys.iter().enumerate() {
+            if *value == 1 {
+                key_is_pressed = true;
+                pressed_key = index;
+            }
+        }
+        if key_is_pressed {
+            self.registers[register_x as usize] = pressed_key as u8;
+            self.curr_keys[pressed_key] = 0;
+        } else {
+            *should_halt = true;
+        }
+    }
+
+    fn skip_if_key_vx_is_released(&mut self, register_x: u16) {
+        let current_key_state = self.curr_keys[self.registers[register_x as usize] as usize];
+        if  current_key_state == 0 {
+            self.pc += 0x2;
+        }
+    }
+
+    fn skip_if_key_vx_is_pressed(&mut self, register_x: u16) {
+        if self.curr_keys[self.registers[register_x as usize] as usize] == 0x1 {
+            self.pc += 0x2;
+        }
+    }
+
+    fn map_hex_value_to_key(key: u8) -> Key {
+        match key {
+            0x1 => Key::Key1,
+            0x2 => Key::Key2,
+            0x3 => Key::Key3,
+            0xC => Key::Key4,
+            0x4 => Key::Q,
+            0x5 => Key::W,
+            0x6 => Key::E,
+            0xD => Key::R,
+            0x7 => Key::A,
+            0x8 => Key::S,
+            0x9 => Key::D,
+            0xE => Key::F,
+            0xA => Key::Z,
+            0x0 => Key::X,
+            0xB => Key::C,
+            0xF => Key::V, 
+            _ => Key::V 
+        }
     }
 
     fn set_sound_timer_value(&mut self, register_x: u16) {
@@ -305,8 +301,6 @@ impl Chip8CPU {
             };
 
             let data = self.memory[(self.i as u32 + row as u32) as usize];
-            println!("The value of the sprite is ${}", data);
-            // let mut pixel_pointer: u32 = x + y * WIDTH as u32 + WIDTH as u32 * ro as u32;
 
             for col in 0..8 {
                 if (col + x) >= WIDTH as u32 {
@@ -318,7 +312,10 @@ impl Chip8CPU {
                 }; // data bit is 0 so no draw needed, skip
 
                 px_pos = (x + col) + (y + row as u32) * WIDTH as u32; // fetch location of screen pixel
-                println!("The screen pixel pos is {}.", px_pos);
+
+                if px_pos > 2048 {
+                    return;
+                }
 
                 if self.vram[px_pos as usize] == 1 {
                     self.registers[0xF] = 1;

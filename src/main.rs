@@ -3,7 +3,6 @@ use rfd::FileDialog;
 use rodio::source::{SineWave, Source};
 use rodio::{OutputStream, Sink};
 use std::fs;
-use std::path::PathBuf;
 
 mod chip8;
 
@@ -63,14 +62,13 @@ fn main() {
             None => {}
         }
 
-        chip8.store_current_pressed_keys(&window);
         let mut bus_counter = DEFAULT_CLOCK_SPEED;
         while bus_counter > 0 {
+            chip8.register_current_pressed_keys(&window);
             chip8.run();
             bus_counter -= 1;
         }
-
-        chip8.store_current_released_keys(&window);
+        chip8.clone_current_to_old_keys(&window);
 
         chip8.decrease_timers_value();
         if chip8.get_sound_timer_value() > 0 {
