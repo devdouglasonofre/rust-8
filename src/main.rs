@@ -1,7 +1,9 @@
-use minifb::{Key, Window, WindowOptions, Scale};
-use std::fs;
-use rodio::{OutputStream, Sink};
+use minifb::{Key, Menu, Scale, Window, WindowOptions};
+use rfd::FileDialog;
 use rodio::source::{SineWave, Source};
+use rodio::{OutputStream, Sink};
+use std::fs;
+use std::path::PathBuf;
 
 mod chip8;
 
@@ -13,40 +15,61 @@ const DEFAULT_CLOCK_SPEED: u8 = 11;
 fn main() {
     let mut chip8 = chip8::Chip8CPU::initialize();
 
-    let current_rom: Vec<u8> = fs::read("./rom/6-keypad.ch8").unwrap();
-
-    chip8.load_rom(current_rom);
-
     let mut buffer: Vec<u32> = vec![0; WIDTH * HEIGHT];
 
-    let mut window =
-        Window::new("Rust-8", WIDTH, HEIGHT, {
-            WindowOptions { 
-                resize: true, scale: Scale::X4, scale_mode: minifb::ScaleMode::Stretch,
-                ..WindowOptions::default()
-            }
-        }).unwrap_or_else(|e| {
-            panic!("{}", e);
-        });
+    let mut window = Window::new("Rust-8", WIDTH, HEIGHT, {
+        WindowOptions {
+            resize: true,
+            scale: Scale::X4,
+            scale_mode: minifb::ScaleMode::Stretch,
+            ..WindowOptions::default()
+        }
+    })
+    .unwrap_or_else(|e| {
+        panic!("{}", e);
+    });
 
-        
-    let refresh_rate = std::time::Duration::from_secs_f32(1.0/60.0);
+    let mut menu = Menu::new("File").unwrap();
+    menu.add_item("Load Rom", 0).build();
+    window.add_menu(&menu);
+
+    let refresh_rate = std::time::Duration::from_secs_f32(1.0 / 60.0);
 
     let (_stream, stream_handle) = OutputStream::try_default().unwrap();
     let sink = Sink::try_new(&stream_handle).unwrap();
-    
+
     // Limit to max ~60 fps update rate
     window.limit_update_rate(Some(refresh_rate));
-    
+
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        
+        match window.is_menu_pressed() {
+            Some(0) => {
+                
+                let files = FileDialog::new()
+                    .add_filter("Chip8 Rom File", &["ch8"])
+                    .set_directory("./")
+                    .pick_file();
+
+                match files {
+                    Some(rom_path) => {
+                        let current_rom: Vec<u8> = fs::read(rom_path).unwrap();
+                        chip8 = chip8::Chip8CPU::initialize();
+                        chip8.load_rom(current_rom);
+                    }
+                    None => {}
+                }
+            }
+            Some(_) => {}
+            None => {}
+        }
+
         chip8.store_current_pressed_keys(&window);
         let mut bus_counter = DEFAULT_CLOCK_SPEED;
         while bus_counter > 0 {
             chip8.run();
             bus_counter -= 1;
         }
-        
+
         chip8.store_current_released_keys(&window);
 
         chip8.decrease_timers_value();
@@ -55,7 +78,7 @@ fn main() {
         } else {
             sink.stop()
         }
-        
+
         let display_data = chip8.get_display_data();
 
         for (index, &value) in display_data.iter().enumerate() {
@@ -73,7 +96,7 @@ fn play_beep(sink: &Sink) {
 
 fn get_pixel_state(pixel: u16) -> u32 {
     if pixel == 0x0 {
-       return from_u8_rgb(0, 0, 0);
+        return from_u8_rgb(0, 0, 0);
     } else {
         return from_u8_rgb(255, 255, 255);
     }

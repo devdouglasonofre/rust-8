@@ -54,14 +54,18 @@ impl Chip8CPU {
     pub fn store_current_pressed_keys(&mut self, window: &Window) {
         window.get_keys_pressed(KeyRepeat::Yes).iter().for_each(|key| {
             let value = self.map_key_to_hex_value(key);
-            self.keys[value as usize] = 0x1;
+            if value != 0xFF {
+                self.keys[value as usize] = 0x1;
+            }
         });
     }
 
     pub fn store_current_released_keys(&mut self, window: &Window) {
         window.get_keys_released().iter().for_each(|key|{
             let value = self.map_key_to_hex_value(key);
-            self.keys[value as usize] = 0x0
+            if value != 0xFF {
+                self.keys[value as usize] = 0x0
+            }
         });
     }
 
@@ -81,6 +85,10 @@ impl Chip8CPU {
         let register_y = (current_instruction_binary >> 4) & 0xF;
 
         println!("{}", format!("{:04X}", current_instruction_binary)); 
+
+        if current_instruction_binary == 0x0 {
+            return;
+        }
 
         match leading_nibble {
             0x0 => match nnn {
