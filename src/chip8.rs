@@ -1,4 +1,4 @@
-use minifb::{Window, KeyRepeat, Key};
+use minifb::{Window, Key};
 
 use crate::{HEIGHT, WIDTH};
 
@@ -408,9 +408,3 @@ impl Chip8CPU {
         self.vram = vec![0; 2048];
     }
 }
-
-//? Subroutines goes on emulator memory
-
-//? Delay timer stop running for wait
-
-//? Sound multipler by beep

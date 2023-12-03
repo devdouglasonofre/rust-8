@@ -13,7 +13,6 @@ const DEFAULT_CLOCK_SPEED: u8 = 11;
 
 fn main() {
     let mut chip8 = chip8::Chip8CPU::initialize();
-
     let mut buffer: Vec<u32> = vec![0; WIDTH * HEIGHT];
 
     let mut window = Window::new("Rust-8", WIDTH, HEIGHT, {
@@ -43,57 +42,73 @@ fn main() {
 
     let mut last_loaded_rom: Option<Vec<u8>> = None;
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        match window.is_menu_pressed() {
-            Some(0) => {
-                
-                let files = FileDialog::new()
-                    .add_filter("Chip8 Rom File", &["ch8"])
-                    .set_directory("./")
-                    .pick_file();
-
-                match files {
-                    Some(rom_path) => {
-                        let current_rom: Vec<u8> = fs::read(rom_path).unwrap();
-                        chip8 = chip8::Chip8CPU::initialize();
-                        last_loaded_rom = Some(current_rom.clone());
-                    
-                        menu.add_item("Reset", 1).build();
-                        chip8.load_rom(current_rom);
-                    }
-                    None => {}
-                }
-            }
-            Some(1) => {
-                chip8 = chip8::Chip8CPU::initialize();
-                chip8.load_rom(last_loaded_rom.clone().unwrap());
-                
-            }
-            Some(_) => {}
-            None => {}
-        }
-
-        let mut bus_counter = DEFAULT_CLOCK_SPEED;
-        chip8.register_current_pressed_keys(&window);
-        while bus_counter > 0 {
-            chip8.run();
-            bus_counter -= 1;
-        }
-        chip8.clone_current_to_old_keys(&window);
-
-        chip8.decrease_timers_value();
-        if chip8.get_sound_timer_value() > 0 {
-            play_beep(&sink);
-        } else {
-            sink.stop()
-        }
-
-        let display_data = chip8.get_display_data();
-
-        for (index, &value) in display_data.iter().enumerate() {
-            buffer[index] = get_pixel_state(value);
-        }
+        handle_menu_interactions(&mut window, &mut chip8, &mut last_loaded_rom, &mut menu);
+        run_cpu_instructions_and_deal_with_input(&mut chip8, &window);
+        handle_timers(&mut chip8, &sink);
+        render(&chip8, &buffer);
 
         window.update_with_buffer(&buffer, WIDTH, HEIGHT).unwrap();
+    }
+}
+
+fn render(chip8: &chip8::Chip8CPU, buffer: &Vec<u32>) {
+    let display_data = chip8.get_display_data();
+
+    for (index, &value) in display_data.iter().enumerate() {
+        *buffer[index] = get_pixel_state(value);
+    }
+}
+
+fn handle_timers(chip8: &mut chip8::Chip8CPU, sink: &Sink) {
+    chip8.decrease_timers_value();
+    if chip8.get_sound_timer_value() > 0 {
+        play_beep(sink);
+    } else {
+        sink.stop()
+    }
+}
+
+fn run_cpu_instructions_and_deal_with_input(chip8: &mut chip8::Chip8CPU, window: &Window) {
+    let mut bus_counter = DEFAULT_CLOCK_SPEED;
+    chip8.register_current_pressed_keys(window);
+    while bus_counter > 0 {
+        chip8.run();
+        bus_counter -= 1;
+    }
+    chip8.clone_current_to_old_keys(window);
+}
+
+fn handle_menu_interactions(
+    window: &mut Window,
+    chip8: &mut chip8::Chip8CPU,
+    last_loaded_rom: &mut Option<Vec<u8>>,
+    menu: &mut Menu,
+) {
+    match window.is_menu_pressed() {
+        Some(0) => {
+            let files = FileDialog::new()
+                .add_filter("Chip8 Rom File", &["ch8"])
+                .set_directory("./")
+                .pick_file();
+
+            match files {
+                Some(rom_path) => {
+                    let current_rom: Vec<u8> = fs::read(rom_path).unwrap();
+                    *chip8 = chip8::Chip8CPU::initialize();
+                    *last_loaded_rom = Some(current_rom.clone());
+
+                    menu.add_item("Reset", 1).build();
+                    chip8.load_rom(current_rom);
+                }
+                None => {}
+            }
+        }
+        Some(1) => {
+            *chip8 = chip8::Chip8CPU::initialize();
+            chip8.load_rom(last_loaded_rom.clone().unwrap());
+        }
+        Some(_) => {}
+        None => {}
     }
 }
 
